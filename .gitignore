@@ -1,0 +1,84 @@
+# Environment files
+.env
+.env.local
+.env.docker
+*env.
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+venv/
+env/
+ENV/
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Docker
+.dockerignore
+
+# Data (optional - uncomment if you don't want to commit data)
+# ai-engine/data/
+
+# Qdrant storage (if running locally without Docker)
+qdrant_storage/
+
+# Ollama models (if running locally without Docker)
+.ollama/
+
+# Test files
+test_*.sh
+*.tmp
+
+# Backup files
+*.bak
+*.backup
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Temporary files
+tmp/
+temp/
+*.cache
+
+.DS_Store
