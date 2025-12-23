@@ -71,7 +71,8 @@ func loadConfig() *Config {
 		pythonURL = "http://localhost:8000"
 	}
 
-	timeout := 60 * time.Second
+	// Default timeout: 3 minutes for AI processing with multiple RAG iterations
+	timeout := 180 * time.Second
 	if timeoutStr := os.Getenv("REQUEST_TIMEOUT"); timeoutStr != "" {
 		if parsedTimeout, err := time.ParseDuration(timeoutStr); err == nil {
 			timeout = parsedTimeout

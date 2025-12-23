@@ -9,13 +9,16 @@ import os
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 import logging
+from dotenv import load_dotenv
+load_dotenv()
 
 # Thêm thư mục hiện tại vào path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
+from contextlib import asynccontextmanager
 import uvicorn
 
 from core.agentic_rag import LegalRAGAgent
@@ -30,13 +33,8 @@ logger = logging.getLogger(__name__)
 # Pydantic Models
 class QueryRequest(BaseModel):
     """Request model cho query endpoint."""
-    question: str = Field(..., description="Câu hỏi cần tìm kiếm", min_length=1)
-    max_iterations: Optional[int] = Field(3, description="Số lần tìm kiếm tối đa", ge=1, le=10)
-    top_k: Optional[int] = Field(3, description="Số lượng kết quả mỗi lần tìm kiếm", ge=1, le=20)
-    enable_web_search: Optional[bool] = Field(True, description="Bật tìm kiếm web")
-    
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "question": "Thời gian thử việc tối đa bao nhiêu ngày?",
                 "max_iterations": 3,
@@ -44,6 +42,12 @@ class QueryRequest(BaseModel):
                 "enable_web_search": True
             }
         }
+    )
+    
+    question: str = Field(..., description="Câu hỏi cần tìm kiếm", min_length=1)
+    max_iterations: Optional[int] = Field(3, description="Số lần tìm kiếm tối đa", ge=1, le=10)
+    top_k: Optional[int] = Field(3, description="Số lượng kết quả mỗi lần tìm kiếm", ge=1, le=20)
+    enable_web_search: Optional[bool] = Field(True, description="Bật tìm kiếm web")
 
 
 class SearchResult(BaseModel):
@@ -56,14 +60,8 @@ class SearchResult(BaseModel):
 
 class QueryResponse(BaseModel):
     """Response model cho query endpoint."""
-    answer: str = Field(..., description="Câu trả lời được tạo")
-    search_results: List[Dict[str, Any]] = Field(default_factory=list, description="Kết quả tìm kiếm nội bộ")
-    web_results: List[Dict[str, Any]] = Field(default_factory=list, description="Kết quả tìm kiếm web")
-    iterations: int = Field(..., description="Số lần tìm kiếm đã thực hiện")
-    query_used: str = Field(..., description="Query cuối cùng được sử dụng")
-    
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "answer": "Theo Điều 24 Bộ luật Lao động 2019...",
                 "search_results": [],
@@ -72,6 +70,13 @@ class QueryResponse(BaseModel):
                 "query_used": "thời gian thử việc tối đa"
             }
         }
+    )
+    
+    answer: str = Field(..., description="Câu trả lời được tạo")
+    search_results: List[Dict[str, Any]] = Field(default_factory=list, description="Kết quả tìm kiếm nội bộ")
+    web_results: List[Dict[str, Any]] = Field(default_factory=list, description="Kết quả tìm kiếm web")
+    iterations: int = Field(..., description="Số lần tìm kiếm đã thực hiện")
+    query_used: str = Field(..., description="Query cuối cùng được sử dụng")
 
 
 class HealthResponse(BaseModel):
@@ -81,33 +86,16 @@ class HealthResponse(BaseModel):
     version: str
 
 
-# FastAPI App
-app = FastAPI(
-    title="Legal RAG AI Engine API",
-    description="HTTP REST API cho hệ thống Agentic RAG pháp lý",
-    version="1.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc"
-)
-
-# CORS Middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Trong production nên giới hạn origins cụ thể
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 # Global agent instance
 agent: Optional[LegalRAGAgent] = None
 
 
-@app.on_event("startup")
-async def startup_event():
-    """Khởi tạo agent khi server start."""
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan event handler cho startup và shutdown."""
     global agent
     
+    # Startup
     logger.info("Starting Legal RAG AI Engine...")
     
     # Load configuration from environment or use defaults
@@ -115,7 +103,7 @@ async def startup_event():
     collection_name = os.getenv("COLLECTION_NAME", "legal_documents")
     ollama_url = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
     ollama_model = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
-    tavily_api_key = os.getenv("TAVILY_API_KEY")
+    tavily_api_key = os.getenv("TAVILY_API_KEY", "")
     
     try:
         agent = LegalRAGAgent(
@@ -131,12 +119,31 @@ async def startup_event():
     except Exception as e:
         logger.error(f"Failed to initialize agent: {e}")
         raise
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Cleanup khi server shutdown."""
+    
+    yield
+    
+    # Shutdown
     logger.info("Shutting down Legal RAG AI Engine...")
+
+
+# FastAPI App
+app = FastAPI(
+    title="Legal RAG AI Engine API",
+    description="HTTP REST API cho hệ thống Agentic RAG pháp lý",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    lifespan=lifespan
+)
+
+# CORS Middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Trong production nên giới hạn origins cụ thể
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/", tags=["Root"])
