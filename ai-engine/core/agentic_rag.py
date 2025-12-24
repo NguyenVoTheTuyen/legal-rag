@@ -81,7 +81,7 @@ class LegalRAGAgent:
         embedding_model: str = "bkai-foundation-models/vietnamese-bi-encoder",
         max_iterations: int = 3,
         top_k: int = 3,
-        tavily_api_key: Optional[str] = None,
+        searxng_url: Optional[str] = None,
         enable_web_search: bool = True,  # Changed to True - auto-enable web search
         prompt_templates: Optional[PromptTemplates] = None
     ):
@@ -96,8 +96,8 @@ class LegalRAGAgent:
             embedding_model: Tên model embedding
             max_iterations: Số lần lặp tối đa
             top_k: Số lượng kết quả tìm kiếm mỗi lần
-            tavily_api_key: Tavily API key cho web search (optional)
-            enable_web_search: Bật web search với Tavily AI
+            searxng_url: URL của SearXNG server cho web search (optional)
+            enable_web_search: Bật web search với SearXNG
             prompt_templates: Custom prompt templates (optional)
         """
         self.qdrant_url = qdrant_url
@@ -107,7 +107,7 @@ class LegalRAGAgent:
         self.embedding_model = embedding_model
         self.max_iterations = max_iterations
         self.top_k = top_k
-        self.tavily_api_key = tavily_api_key
+        self.searxng_url = searxng_url
         self.enable_web_search = enable_web_search
         
         # Khởi tạo prompt templates
@@ -146,14 +146,13 @@ class LegalRAGAgent:
         # Khởi tạo web search nếu được bật
         if self.enable_web_search:
             if not WEB_SEARCH_AVAILABLE:
-                print("⚠️  Web search disabled: tavily-python chưa được cài đặt")
-                print("   Cài đặt: pip install tavily-python")
+                print("⚠️  Web search disabled: web_search module không khả dụng")
                 self.enable_web_search = False
             else:
                 try:
-                    self.web_search = LegalWebSearch(api_key=self.tavily_api_key)
-                    print("✓ Đã khởi tạo Tavily Web Search")
-                except ValueError as e:
+                    self.web_search = LegalWebSearch(searxng_url=self.searxng_url)
+                    print("✓ Đã khởi tạo SearXNG Web Search")
+                except Exception as e:
                     print(f"⚠️  Web search disabled: {e}")
                     self.enable_web_search = False
         
@@ -520,10 +519,10 @@ class LegalRAGAgent:
                 }
                 all_results.append(web_result)
             elif r.get("type") == "answer":
-                # Tavily summary
+                # SearXNG summary (if available)
                 web_result = {
-                    "text": f"[Tóm tắt từ Tavily AI]\n{r.get('content', '')}",
-                    "metadata": {"source": "tavily_summary"},
+                    "text": f"[Tóm tắt từ Web Search]\n{r.get('content', '')}",
+                    "metadata": {"source": "web_summary"},
                     "score": 1.0,
                     "source_type": "web"
                 }

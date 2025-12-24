@@ -103,7 +103,7 @@ async def lifespan(app: FastAPI):
     collection_name = os.getenv("COLLECTION_NAME", "legal_documents")
     ollama_url = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
     ollama_model = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
-    tavily_api_key = os.getenv("TAVILY_API_KEY", "")
+    searxng_url = os.getenv("SEARXNG_URL", "http://localhost:8888")
     
     try:
         agent = LegalRAGAgent(
@@ -111,7 +111,7 @@ async def lifespan(app: FastAPI):
             collection_name=collection_name,
             ollama_url=ollama_url,
             ollama_model=ollama_model,
-            tavily_api_key=tavily_api_key,
+            searxng_url=searxng_url,
             enable_web_search=True
         )
         agent.initialize()

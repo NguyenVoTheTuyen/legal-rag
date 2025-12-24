@@ -1,47 +1,44 @@
 """
-Module để tìm kiếm thông tin pháp lý trên internet sử dụng Tavily AI.
+Module để tìm kiếm thông tin pháp lý trên internet sử dụng SearXNG (self-hosted).
 """
 
 import os
+import requests
 from typing import List, Dict, Any, Optional
+from urllib.parse import urlencode
 
 
 class LegalWebSearch:
-    """Class để tìm kiếm thông tin pháp lý trên internet."""
+    """Class để tìm kiếm thông tin pháp lý trên internet sử dụng SearXNG."""
     
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, searxng_url: Optional[str] = None):
         """
         Khởi tạo LegalWebSearch.
         
         Args:
-            api_key: Tavily API key (nếu None sẽ lấy từ env TAVILY_API_KEY)
+            searxng_url: URL của SearXNG instance (nếu None sẽ lấy từ env SEARXNG_URL)
         """
-        self.api_key = api_key or os.getenv("TAVILY_API_KEY")
-        if not self.api_key:
-            raise ValueError(
-                "TAVILY_API_KEY không được thiết lập.\n"
-                "Hãy set environment variable: export TAVILY_API_KEY='tvly-xxxxx'\n"
-                "Hoặc truyền vào constructor: LegalWebSearch(api_key='tvly-xxxxx')\n"
-                "Đăng ký API key miễn phí tại: https://tavily.com"
-            )
+        self.searxng_url = searxng_url or os.getenv("SEARXNG_URL", "http://localhost:8888")
         
-        # Import here to avoid dependency if not using web search
+        # Remove trailing slash if present
+        self.searxng_url = self.searxng_url.rstrip('/')
+        
+        # Test connection
         try:
-            from tavily import TavilyClient
-            self.client = TavilyClient(api_key=self.api_key)
-        except ImportError:
-            raise ImportError(
-                "Tavily package chưa được cài đặt.\n"
-                "Hãy cài đặt: pip install tavily-python"
-            )
+            response = requests.get(f"{self.searxng_url}/healthz", timeout=5)
+            if response.status_code != 200:
+                print(f"⚠️  Warning: SearXNG health check failed at {self.searxng_url}")
+        except requests.exceptions.RequestException as e:
+            print(f"⚠️  Warning: Cannot connect to SearXNG at {self.searxng_url}: {e}")
+            print(f"   Make sure SearXNG is running (docker-compose up -d searxng)")
     
     def search(
         self,
         query: str,
         max_results: int = 3,
-        search_depth: str = "advanced",
-        include_domains: Optional[List[str]] = None,
-        include_answer: bool = True
+        language: str = "vi",
+        categories: str = "general",
+        engines: Optional[List[str]] = None
     ) -> List[Dict[str, Any]]:
         """
         Tìm kiếm thông tin pháp lý trên internet.
@@ -49,70 +46,91 @@ class LegalWebSearch:
         Args:
             query: Câu hỏi tìm kiếm
             max_results: Số kết quả tối đa (mặc định: 3)
-            search_depth: "basic" hoặc "advanced" (mặc định: advanced)
-            include_domains: Danh sách domain ưu tiên (None = dùng mặc định)
-            include_answer: Có lấy answer tóm tắt từ Tavily không
+            language: Ngôn ngữ tìm kiếm (mặc định: vi - Vietnamese)
+            categories: Loại tìm kiếm (mặc định: general)
+            engines: Danh sách search engines (None = dùng mặc định)
             
         Returns:
             List các kết quả tìm kiếm:
             [
                 {
-                    "type": "answer" | "article",
+                    "type": "article",
                     "content": str,
-                    "title": str (chỉ với article),
-                    "url": str (chỉ với article),
-                    "score": float (chỉ với article),
-                    "source": str
+                    "title": str,
+                    "url": str,
+                    "score": float,
+                    "source": str,
+                    "engine": str
                 }
             ]
         """
-        # Domains ưu tiên cho pháp luật Việt Nam
-        if include_domains is None:
-            include_domains = [
-                "thuvienphapluat.vn",
-                "luatvietnam.vn",
-                "moj.gov.vn",  # Bộ Tư pháp
-                "molisa.gov.vn",  # Bộ Lao động - Thương binh và Xã hội
-                "chinhphu.vn",  # Cổng thông tin điện tử Chính phủ
-            ]
-        
         try:
-            print(f"\n[Web Search] Đang tìm kiếm trên internet: '{query}'")
-            print(f"[Web Search] Ưu tiên domains: {', '.join(include_domains[:3])}...")
+            print(f"\n[Web Search] Đang tìm kiếm trên SearXNG: '{query}'")
             
-            response = self.client.search(
-                query=query,
-                max_results=max_results,
-                search_depth=search_depth,
-                include_domains=include_domains,
-                include_answer=include_answer
+            # Build search data for POST request
+            data = {
+                'q': query,
+                'format': 'json',
+                'language': language,
+                'categories': categories,
+            }
+            
+            # Add specific engines if provided
+            if engines:
+                data['engines'] = ','.join(engines)
+            
+            # Make POST request to SearXNG (GET requests are often blocked)
+            search_url = f"{self.searxng_url}/search"
+            response = requests.post(
+                search_url,
+                data=data,
+                timeout=30,
+                headers={
+                    'User-Agent': 'Legal-RAG-Bot/1.0',
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                }
             )
             
+            if response.status_code != 200:
+                print(f"[Web Search] ✗ SearXNG returned status {response.status_code}")
+                return []
+            
+            data = response.json()
             results = []
             
-            # Add Tavily's generated answer if available
-            if include_answer and response.get("answer"):
-                results.append({
-                    "type": "answer",
-                    "content": response["answer"],
-                    "source": "Tavily AI Summary"
-                })
-                print(f"[Web Search] ✓ Có answer tóm tắt từ Tavily")
-            
-            # Add search results
-            for item in response.get("results", []):
+            # Process search results
+            for item in data.get('results', [])[:max_results]:
+                # Calculate a simple relevance score (SearXNG doesn't provide scores)
+                # We'll use position as inverse score (first result = highest score)
+                position = len(results) + 1
+                score = 1.0 - (position * 0.1)  # 1.0, 0.9, 0.8, etc.
+                
                 results.append({
                     "type": "article",
                     "title": item.get("title", ""),
                     "url": item.get("url", ""),
                     "content": item.get("content", ""),
-                    "score": item.get("score", 0.0),
-                    "source": "Web Search"
+                    "score": max(0.1, score),  # Minimum score of 0.1
+                    "source": "Web Search",
+                    "engine": item.get("engine", "unknown")
                 })
             
-            print(f"[Web Search] ✓ Tìm thấy {len(results)} kết quả từ internet")
+            print(f"[Web Search] ✓ Tìm thấy {len(results)} kết quả từ SearXNG")
+            
+            # Print engines used
+            engines_used = set(r.get("engine", "unknown") for r in results)
+            if engines_used:
+                print(f"[Web Search] Engines: {', '.join(engines_used)}")
+            
             return results
             
+        except requests.exceptions.Timeout:
+            print(f"[Web Search] ✗ Timeout khi tìm kiếm (>30s)")
+            return []
+        except requests.exceptions.RequestException as e:
+            print(f"[Web Search] ✗ Lỗi kết nối đến SearXNG: {e}")
+            return []
         except Exception as e:
             print(f"[Web Search] ✗ Lỗi khi tìm kiếm web: {e}")
             return []
@@ -138,8 +156,35 @@ class LegalWebSearch:
         return self.search(
             query=optimized_query,
             max_results=max_results,
-            search_depth="advanced",
-            include_answer=True
+            language="vi",
+            categories="general"
+        )
+    
+    def search_specific_domains(
+        self,
+        query: str,
+        domains: List[str],
+        max_results: int = 3
+    ) -> List[Dict[str, Any]]:
+        """
+        Tìm kiếm trên các domain cụ thể.
+        
+        Args:
+            query: Câu hỏi tìm kiếm
+            domains: Danh sách domain (vd: ["thuvienphapluat.vn", "luatvietnam.vn"])
+            max_results: Số kết quả tối đa
+            
+        Returns:
+            List các kết quả tìm kiếm
+        """
+        # Add site: operator for each domain
+        domain_query = " OR ".join([f"site:{domain}" for domain in domains])
+        full_query = f"{query} ({domain_query})"
+        
+        return self.search(
+            query=full_query,
+            max_results=max_results,
+            language="vi"
         )
 
 
@@ -147,16 +192,9 @@ def main():
     """Test function."""
     import sys
     
-    # Check API key
-    api_key = os.getenv("TAVILY_API_KEY")
-    if not api_key:
-        print("✗ TAVILY_API_KEY chưa được thiết lập!")
-        print("\nĐể test, hãy:")
-        print("1. Đăng ký API key tại: https://tavily.com")
-        print("2. Set environment variable:")
-        print("   export TAVILY_API_KEY='tvly-xxxxx'")
-        print("3. Chạy lại script này")
-        sys.exit(1)
+    # Check SearXNG URL
+    searxng_url = os.getenv("SEARXNG_URL", "http://localhost:8888")
+    print(f"SearXNG URL: {searxng_url}")
     
     try:
         # Initialize
@@ -164,7 +202,7 @@ def main():
         
         # Test search
         print("=" * 80)
-        print("TEST TAVILY WEB SEARCH")
+        print("TEST SEARXNG WEB SEARCH")
         print("=" * 80)
         
         query = "lương thử việc theo quy định mới nhất"
@@ -177,21 +215,27 @@ def main():
         print("KẾT QUẢ")
         print("=" * 80)
         
+        if not results:
+            print("\n✗ Không tìm thấy kết quả nào!")
+            print("\nKiểm tra:")
+            print("1. SearXNG có đang chạy không? (docker-compose up -d searxng)")
+            print("2. Truy cập http://localhost:8888 để test")
+            print(f"3. SEARXNG_URL={searxng_url} có đúng không?")
+            sys.exit(1)
+        
         for i, result in enumerate(results, 1):
             print(f"\n[{i}] Type: {result['type']}")
             print(f"Source: {result['source']}")
+            print(f"Engine: {result.get('engine', 'N/A')}")
+            print(f"Title: {result.get('title', 'N/A')}")
+            print(f"URL: {result.get('url', 'N/A')}")
+            print(f"Score: {result.get('score', 0):.4f}")
             
-            if result['type'] == 'answer':
-                print(f"Content: {result['content']}")
+            content = result.get('content', '')
+            if len(content) > 200:
+                print(f"Content: {content[:200]}...")
             else:
-                print(f"Title: {result.get('title', 'N/A')}")
-                print(f"URL: {result.get('url', 'N/A')}")
-                print(f"Score: {result.get('score', 0):.4f}")
-                content = result.get('content', '')
-                if len(content) > 200:
-                    print(f"Content: {content[:200]}...")
-                else:
-                    print(f"Content: {content}")
+                print(f"Content: {content}")
             
             print("-" * 80)
         
