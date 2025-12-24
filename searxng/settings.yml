@@ -1,0 +1,19 @@
+use_default_settings: true
+
+server:
+  secret_key: "legal-rag-secret-key-please-change-in-production"
+  limiter: false  # Disable rate limiting
+  image_proxy: true
+
+search:
+  safe_search: 0
+  autocomplete: ""
+  default_lang: "all"
+  formats:
+    - html
+    - json
+
+enabled_plugins:
+  - 'Hash plugin'
+  - 'Self Information'
+  - 'Tracker URL remover'

@@ -49,6 +49,33 @@ services:
     #           count: 1
     #           capabilities: [gpu]
 
+  # SearXNG Search Engine
+  searxng:
+    image: searxng/searxng:latest
+    container_name: legal-rag-searxng
+    ports:
+      - "8888:8080"
+    volumes:
+      - ./searxng:/etc/searxng:rw
+    environment:
+      - SEARXNG_BASE_URL=http://localhost:8888/
+    restart: unless-stopped
+    networks:
+      - legal-rag-network
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+        max-file: "1"
+
+
+
   # Python AI Engine
   ai-engine:
     build:
@@ -64,7 +91,7 @@ services:
       - COLLECTION_NAME=legal_documents
       - OLLAMA_URL=http://ollama:11434
       - OLLAMA_MODEL=qwen2.5:7b
-      - TAVILY_API_KEY=${TAVILY_API_KEY:-}
+      - SEARXNG_URL=http://searxng:8080
     depends_on:
       qdrant:
         condition: service_healthy

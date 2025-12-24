@@ -4,15 +4,38 @@ Hệ thống RAG (Retrieval-Augmented Generation) sử dụng AI để trả l�
 
 ## 📋 Mục Lục
 
-- [Giới Thiệu](#giới-thiệu)
-- [Kiến Trúc Hệ Thống](#kiến-trúc-hệ-thống)
-- [Công Nghệ Sử Dụng](#công-nghệ-sử-dụng)
-- [Cách Hoạt Động](#cách-hoạt-động)
-- [🐳 Quick Start với Docker](#-quick-start-với-docker)
-- [Cài Đặt](#cài-đặt)
-- [Sử Dụng](#sử-dụng)
-- [Cấu Trúc Project](#cấu-trúc-project)
-- [API Documentation](#api-documentation)
+- [Giới Thiệu](#-giới-thiệu)
+- [Quick Start với Docker](#-quick-start-với-docker)
+- [Kiến Trúc Hệ Thống](#️-kiến-trúc-hệ-thống)
+- [Công Nghệ Sử Dụng](#️-công-nghệ-sử-dụng)
+- [Cách Hoạt Động](#️-cách-hoạt-động)
+- [Cài Đặt](#-cài-đặt)
+- [Sử Dụng](#-sử-dụng)
+- [Cấu Trúc Project](#-cấu-trúc-project)
+- [API Documentation](#-api-documentation)
+- [Configuration](#-configuration)
+
+---
+
+## 🎯 Giới Thiệu
+
+### Vấn Đề Cần Giải Quyết
+
+Việc tra cứu và hiểu các quy định pháp luật Việt Nam thường gặp nhiều khó khăn:
+- **Khối lượng lớn**: Hàng nghìn điều luật, nghị định, thông tư
+- **Ngôn ngữ phức tạp**: Thuật ngữ pháp lý khó hiểu
+- **Tìm kiếm khó khăn**: Không biết tìm ở đâu, điều nào
+- **Thông tin lỗi thời**: Luật thay đổi liên tục
+
+### Giải Pháp
+
+**Legal RAG** là hệ thống AI kết hợp:
+1. **Retrieval**: Tìm kiếm thông minh trong cơ sở dữ liệu pháp luật
+2. **Generation**: Tạo câu trả lời dễ hiểu bằng AI
+3. **Agentic**: Tự động quyết định cách tìm kiếm tốt nhất
+4. **Web Search**: Tìm kiếm thông tin mới nhất trên internet (self-hosted)
+
+**Kết quả**: Trả lời chính xác, có trích dẫn điều luật cụ thể, dễ hiểu.
 
 ---
 
@@ -59,6 +82,7 @@ curl -X POST http://localhost:8080/api/legal-query \
 - **AI Engine**: http://localhost:8000
 - **Qdrant**: http://localhost:6333
 - **Ollama**: http://localhost:11434
+- **SearXNG**: http://localhost:8888
 
 ### Useful Commands
 
@@ -94,27 +118,6 @@ deploy:
           capabilities: [gpu]
 ```
 
-
-
-## 🎯 Giới Thiệu
-
-### Vấn Đề Cần Giải Quyết
-
-Việc tra cứu và hiểu các quy định pháp luật Việt Nam thường gặp nhiều khó khăn:
-- **Khối lượng lớn**: Hàng nghìn điều luật, nghị định, thông tư
-- **Ngôn ngữ phức tạp**: Thuật ngữ pháp lý khó hiểu
-- **Tìm kiếm khó khăn**: Không biết tìm ở đâu, điều nào
-- **Thông tin lỗi thời**: Luật thay đổi liên tục
-
-### Giải Pháp
-
-**Legal RAG** là hệ thống AI kết hợp:
-1. **Retrieval**: Tìm kiếm thông minh trong cơ sở dữ liệu pháp luật
-2. **Generation**: Tạo câu trả lời dễ hiểu bằng AI
-3. **Agentic**: Tự động quyết định cách tìm kiếm tốt nhất
-
-**Kết quả**: Trả lời chính xác, có trích dẫn điều luật cụ thể, dễ hiểu.
-
 ---
 
 ## 🏗️ Kiến Trúc Hệ Thống
@@ -126,15 +129,15 @@ graph TB
     Client[Client/User] -->|HTTP POST| GoAPI[Go Backend API<br/>Port 8080]
     GoAPI -->|HTTP POST| PyEngine[Python AI Engine<br/>Port 8000]
     
-    PyEngine -->|Query| Agent[Agentic RAG<br/>LangGraph]
+    PyEngine --> Agent[Agentic RAG<br/>LangGraph]
     
     Agent -->|1. Search| Qdrant[(Qdrant<br/>Vector DB)]
     Agent -->|2. Generate| Ollama[Ollama LLM<br/>qwen2.5:7b]
-    Agent -->|3. Web Search| Tavily[Tavily API<br/>Optional]
+    Agent -->|3. Web Search| SearXNG[SearXNG<br/>Self-hosted Search]
     
     Qdrant -->|Results| Agent
     Ollama -->|Answer| Agent
-    Tavily -->|Web Results| Agent
+    SearXNG -->|Web Results| Agent
     
     Agent -->|Response| PyEngine
     PyEngine -->|JSON| GoAPI
@@ -146,7 +149,7 @@ graph TB
     style Agent fill:#e8f5e9
     style Qdrant fill:#fce4ec
     style Ollama fill:#fff9c4
-    style Tavily fill:#e0f2f1
+    style SearXNG fill:#e0f2f1
 ```
 
 ### Các Thành Phần
@@ -166,7 +169,7 @@ graph TB
 - **Chức năng**:
   - Expose HTTP API
   - Chạy Agentic RAG workflow
-  - Quản lý kết nối với Qdrant, Ollama
+  - Quản lý kết nối với Qdrant, Ollama, SearXNG
 
 #### 3. **Agentic RAG** (LangGraph)
 - **Vai trò**: "Bộ não" của hệ thống
@@ -190,6 +193,16 @@ graph TB
   - Quyết định hành động
   - Tạo câu trả lời từ kết quả tìm kiếm
 
+#### 6. **SearXNG** (Self-hosted Search Engine)
+- **Vai trò**: Tìm kiếm thông tin mới nhất trên internet
+- **Công nghệ**: SearXNG metasearch engine
+- **Ưu điểm**:
+  - 🆓 Hoàn toàn miễn phí, không cần API key
+  - 🔒 Riêng tư, tất cả search chạy local
+  - ⚡ Không giới hạn số lượng search
+  - 🇻🇳 Hỗ trợ tiếng Việt tốt
+  - 🔍 Tổng hợp từ nhiều search engines (Google, Bing, DuckDuckGo, Brave...)
+
 ---
 
 ## 🛠️ Công Nghệ Sử Dụng
@@ -208,8 +221,11 @@ graph TB
 - **Qdrant**: Vector database
 - **Ollama**: Local LLM inference
 
-### Optional
-- **Tavily API**: Web search cho thông tin mới nhất
+### Search
+- **SearXNG**: Self-hosted metasearch engine
+  - Privacy-focused
+  - No API costs
+  - Aggregates results from multiple engines
 
 ---
 
@@ -252,9 +268,10 @@ stateDiagram-v2
      - Embedding câu hỏi
      - Similarity search
      - Lấy top-k kết quả
-   - **Web Search** (optional): Tìm trên internet
-     - Dùng Tavily API
-     - Lấy thông tin mới nhất
+   - **Web Search**: Tìm trên internet qua SearXNG
+     - Tự động trigger khi cần thông tin mới nhất
+     - Tổng hợp từ nhiều search engines
+     - Hỗ trợ tiếng Việt
 
 4. **Refine Query** (Tinh chỉnh - nếu cần)
    - LLM phân tích kết quả hiện tại
@@ -263,7 +280,7 @@ stateDiagram-v2
 
 5. **Generate Answer** (Tạo câu trả lời)
    - LLM đọc tất cả kết quả tìm được
-   - Tổng hợp thông tin
+   - Tổng hợp thông tin từ cả DB nội bộ và web
    - Tạo câu trả lời có cấu trúc:
      - Các điều luật liên quan
      - Phân tích chi tiết
@@ -294,7 +311,8 @@ stateDiagram-v2
 {
   "answer": "1. Các điều luật liên quan:\n   - Điều 25, Khoản 2...\n\n2. Phân tích:\n   - 60 ngày cho trình độ cao đẳng+\n   - 30 ngày cho trình độ trung cấp...",
   "iterations": 2,
-  "search_results": [...]
+  "search_results": [...],
+  "web_results": [...]
 }
 ```
 
@@ -329,6 +347,12 @@ stateDiagram-v2
    
    # Start server
    ollama serve
+   ```
+
+5. **SearXNG** (Search Engine)
+   ```bash
+   # Included in docker-compose.yml
+   docker-compose up -d searxng
    ```
 
 ### Installation Steps
@@ -376,19 +400,25 @@ stateDiagram-v2
 docker run -p 6333:6333 qdrant/qdrant
 ```
 
-**Terminal 2 - Ollama**:
+**Terminal 2 - SearXNG**:
+```bash
+docker-compose up -d searxng
+# Access web UI: http://localhost:8888
+```
+
+**Terminal 3 - Ollama**:
 ```bash
 ollama serve
 ```
 
-**Terminal 3 - Python AI Engine**:
+**Terminal 4 - Python AI Engine**:
 ```bash
 cd ai-engine
 python api_server.py
 # Server running on http://localhost:8000
 ```
 
-**Terminal 4 - Go Backend**:
+**Terminal 5 - Go Backend**:
 ```bash
 cd backend-api
 go run main.go
@@ -455,8 +485,11 @@ curl -X POST http://localhost:8080/api/legal-query \
 ```
 Legal-RAG/
 ├── README.md                    # Documentation này
-├── docker-compose.yml           # Docker setup (optional)
+├── docker-compose.yml           # Docker setup
 ├── test_http_integration.sh     # Integration test script
+│
+├── searxng/                     # SearXNG configuration
+│   └── settings.yml            # Search engine settings
 │
 ├── ai-engine/                   # Python AI Engine
 │   ├── api_server.py           # FastAPI HTTP server
@@ -469,7 +502,7 @@ Legal-RAG/
 │   │   ├── search.py          # Search logic
 │   │   ├── llm_generator.py   # LLM wrapper
 │   │   ├── prompt_templates.py # Prompt templates
-│   │   └── web_search.py      # Web search (Tavily)
+│   │   └── web_search.py      # Web search (SearXNG)
 │   │
 │   ├── embedding/              # Embedding modules
 │   │   ├── embedder.py        # Vietnamese embedder
@@ -492,8 +525,10 @@ Legal-RAG/
 | `ai-engine/api_server.py` | HTTP server expose Agentic RAG |
 | `ai-engine/core/agentic_rag.py` | LangGraph workflow - "bộ não" của hệ thống |
 | `ai-engine/core/search.py` | Tìm kiếm trong Qdrant vector DB |
+| `ai-engine/core/web_search.py` | Tìm kiếm web qua SearXNG |
 | `ai-engine/run_embedding.py` | Ingest documents vào Qdrant |
 | `backend-api/main.go` | Go API gateway |
+| `searxng/settings.yml` | Cấu hình SearXNG search engine |
 
 ---
 
@@ -506,7 +541,7 @@ Legal-RAG/
 **POST /api/legal-query**
 - Main endpoint cho client
 - Request: `{"question": "string", ...}`
-- Response: `{"answer": "string", "search_results": [...], ...}`
+- Response: `{"answer": "string", "search_results": [...], "web_results": [...], ...}`
 
 **GET /health**
 - Health check
@@ -521,6 +556,16 @@ Legal-RAG/
 **GET /docs**
 - Auto-generated OpenAPI documentation
 - Visit: http://localhost:8000/docs
+
+#### SearXNG (Port 8888)
+
+**Web UI**
+- Visit: http://localhost:8888
+- Interactive search interface
+
+**POST /search**
+- JSON API endpoint
+- Used internally by web_search.py
 
 ### Request Schema
 
@@ -545,10 +590,20 @@ Legal-RAG/
         "article_id": "string",
         "article_title": "string"
       },
-      "score": 0.95
+      "score": 0.95,
+      "source_type": "internal"
     }
   ],
-  "web_results": [...],
+  "web_results": [
+    {
+      "title": "string",
+      "url": "string",
+      "content": "string",
+      "score": 0.9,
+      "source_type": "web",
+      "engine": "duckduckgo"
+    }
+  ],
   "iterations": 2,
   "query_used": "string"
 }
@@ -563,11 +618,19 @@ Legal-RAG/
 #### Python AI Engine
 
 ```bash
+# Qdrant Configuration
 QDRANT_URL=http://localhost:6333
 COLLECTION_NAME=legal_documents
+
+# Ollama Configuration
 OLLAMA_URL=http://127.0.0.1:11434
 OLLAMA_MODEL=qwen2.5:7b
-TAVILY_API_KEY=your_key_here  # Optional for web search
+
+# SearXNG Configuration (for web search)
+SEARXNG_URL=http://localhost:8888
+
+# Embedding Model
+EMBEDDING_MODEL=bkai-foundation-models/vietnamese-bi-encoder
 ```
 
 #### Go Backend
@@ -576,6 +639,22 @@ TAVILY_API_KEY=your_key_here  # Optional for web search
 GO_SERVER_PORT=8080
 PYTHON_AI_ENGINE_URL=http://localhost:8000
 REQUEST_TIMEOUT=60s
+```
+
+#### SearXNG
+
+Edit `searxng/settings.yml`:
+
+```yaml
+server:
+  secret_key: "your-secret-key"  # Change in production
+  limiter: false  # Disable rate limiting for internal use
+
+search:
+  default_lang: "all"
+  formats:
+    - html
+    - json
 ```
 
 ---
@@ -591,8 +670,9 @@ REQUEST_TIMEOUT=60s
 This script tests:
 1. Python AI Engine health
 2. Go Backend health
-3. Direct Python query
-4. Full integration (Client → Go → Python)
+3. SearXNG availability
+4. Direct Python query
+5. Full integration (Client → Go → Python)
 
 ### Manual Testing
 
@@ -603,11 +683,42 @@ curl http://localhost:8000/health
 # Test Go backend
 curl http://localhost:8080/health
 
+# Test SearXNG
+curl http://localhost:8888
+
+# Test web search module
+cd ai-engine && python core/web_search.py
+
 # Test full flow
 curl -X POST http://localhost:8080/api/legal-query \
   -H "Content-Type: application/json" \
   -d '{"question": "Test question"}'
 ```
+
+---
+
+## 🚀 Features
+
+### ✅ Implemented
+
+- ✅ Agentic RAG với LangGraph
+- ✅ Vector search với Qdrant
+- ✅ Vietnamese LLM (Ollama qwen2.5:7b)
+- ✅ Self-hosted web search (SearXNG)
+- ✅ HTTP API (FastAPI + Gin)
+- ✅ Docker deployment
+- ✅ Multi-iteration search
+- ✅ Query refinement
+- ✅ Source citation
+
+### 🔄 Roadmap
+
+- [ ] Frontend UI
+- [ ] User authentication
+- [ ] Search history
+- [ ] Document upload
+- [ ] Multi-language support
+- [ ] Advanced analytics
 
 ---
 
@@ -618,6 +729,7 @@ curl -X POST http://localhost:8080/api/legal-query \
 1. **New data sources**: Add to `ai-engine/data/`
 2. **New prompts**: Edit `ai-engine/core/prompt_templates.py`
 3. **New endpoints**: Add to `ai-engine/api_server.py` and `backend-api/main.go`
+4. **Customize search**: Edit `searxng/settings.yml`
 
 ### Development Workflow
 
@@ -639,6 +751,7 @@ MIT License
 - **LangChain/LangGraph**: Agentic workflow framework
 - **Qdrant**: Vector database
 - **Ollama**: Local LLM inference
+- **SearXNG**: Privacy-respecting metasearch engine
 - **FastAPI**: Python web framework
 - **Gin**: Go web framework
 
@@ -649,7 +762,8 @@ MIT License
 For issues or questions:
 1. Check documentation
 2. Review API docs at http://localhost:8000/docs
-3. Check logs in terminal
+3. Check SearXNG at http://localhost:8888
+4. Check logs in terminal
 
 ---
 
