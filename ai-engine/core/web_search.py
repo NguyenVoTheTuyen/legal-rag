@@ -233,7 +233,7 @@ def main():
             
             content = result.get('content', '')
             if len(content) > 200:
-                print(f"Content: {content[:200]}...")
+                print(f"Content: {content}")
             else:
                 print(f"Content: {content}")
             

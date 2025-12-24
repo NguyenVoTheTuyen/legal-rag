@@ -150,8 +150,13 @@ class OllamaGenerator:
         for i, result in enumerate(search_results, 1):
             metadata = result.get('metadata', {})
             text = result.get('text', '')
+            source_type = result.get('source_type', 'internal')
             
-            context_item = f"[Điều luật {i}]\n"
+            if source_type == 'web':
+                context_item = f"[Thông tin Web {i}]\n"
+            else:
+                context_item = f"[Điều luật {i}]\n"
+                
             if metadata.get('article_id'):
                 context_item += f"Điều: {metadata['article_id']}\n"
             if metadata.get('article_title'):

@@ -35,24 +35,7 @@ except ImportError:
 
 
 # Helper function để detect câu hỏi về số liệu cụ thể
-def _contains_specific_data_query(question: str) -> bool:
-    """
-    Kiểm tra xem câu hỏi có yêu cầu số liệu cụ thể không.
-    
-    Args:
-        question: Câu hỏi cần kiểm tra
-        
-    Returns:
-        True nếu câu hỏi về số liệu cụ thể
-    """
-    keywords = [
-        "bao nhiêu", "mức", "tỷ lệ", "%", "phần trăm",
-        "số tiền", "tiền", "lương", "ngày", "tháng", "năm",
-        "hiện nay", "mới nhất", "2024", "2025",
-        "cụ thể", "chính xác", "đúng"
-    ]
-    question_lower = question.lower()
-    return any(keyword in question_lower for keyword in keywords)
+
 
 
 class AgentState(TypedDict):
@@ -64,9 +47,10 @@ class AgentState(TypedDict):
     answer: Optional[str]  # Câu trả lời cuối cùng
     iteration: int  # Số lần lặp
     max_iterations: int  # Số lần lặp tối đa
-    needs_refinement: bool  # Có cần refine query không
     should_continue: bool  # Có nên tiếp tục tìm kiếm không
     use_web_search: bool  # Có sử dụng web search không
+    intent: Optional[Literal["INTERNAL", "EXTERNAL"]]  # Intent của câu hỏi
+
 
 
 class LegalRAGAgent:
@@ -237,24 +221,73 @@ class LegalRAGAgent:
             state["should_continue"] = False
             return state
         
-        # Nếu chưa có kết quả nào, cần search
+        # Nếu chưa có kết quả nào
         if not search_results and not web_results:
+            # IMPROVED: Use LLM Router to classify intent
+            if self.enable_web_search:
+                intent = self._classify_query_intent(question)
+                if intent == "EXTERNAL":
+                    print(f"[Router] LLM đánh giá intent: EXTERNAL → Ưu tiên Web Search")
+                    state["needs_refinement"] = False
+                    state["should_continue"] = True
+                    state["use_web_search"] = True
+                    state["intent"] = "EXTERNAL"
+                    return state
+                else:
+                    print(f"[Router] LLM đánh giá intent: INTERNAL → Ưu tiên Internal Search")
+                    state["intent"] = "INTERNAL"
+            
+            # Default to internal search
             state["should_continue"] = True
             state["needs_refinement"] = False
             state["use_web_search"] = False
             return state
         
-        # IMPROVED: Fallback mechanism - nếu đã search nội bộ 2 lần mà câu hỏi về số liệu cụ thể
-        # và chưa có web results, tự động trigger web search
+        # Fallback mechanism - giữ lại để an toàn
         if (self.enable_web_search and 
             iteration >= 2 and 
-            not web_results and 
-            _contains_specific_data_query(question)):
-            print(f"[Quyết định] Fallback: Đã search nội bộ {iteration} lần, câu hỏi về số liệu cụ thể → trigger web_search")
+            not web_results):
+            # Simplistic fallback check purely on iteration count if LLM routing missed it initially
             state["needs_refinement"] = False
             state["should_continue"] = True
             state["use_web_search"] = True
             return state
+
+    def _classify_query_intent(self, question: str) -> str:
+        """
+        Dùng LLM để phân loại intent của câu hỏi.
+        
+        Args:
+            question: Câu hỏi cần phân loại
+            
+        Returns:
+            "INTERNAL" hoặc "EXTERNAL"
+        """
+        # 1. Keyword-based heuristics (Fast & Reliable check)
+        keywords_external = [
+            "ở đâu", "địa chỉ", "số điện thoại", "liên hệ", "trung tâm", 
+            "cụ thể", "địa điểm", "nộp hồ sơ", "bao nhiêu tiền", 
+            "lãi suất", "tỷ lệ", "mới nhất", "bây giờ", "hôm nay", "hiện tại"
+        ]
+        question_lower = question.lower()
+        if any(kw in question_lower for kw in keywords_external):
+            print(f"[Router] Detected keyword triggering EXTERNAL: {next(k for k in keywords_external if k in question_lower)}")
+            return "EXTERNAL"
+
+        # 2. LLM-based classification (Fallback/Deep understanding)
+        try:
+            router_prompt = self.prompt_templates.get_router_prompt(question)
+            messages = [HumanMessage(content=router_prompt)]
+            response = self.llm.invoke(messages)
+            intent = response.content.strip().upper()
+            
+            # Basic cleanup if LLM adds extra text
+            if "EXTERNAL" in intent:
+                return "EXTERNAL"
+            return "INTERNAL"
+        except Exception as e:
+            print(f"Lỗi Router: {e}. Defaulting to INTERNAL.")
+            return "INTERNAL"
         
         # Tạo preview của kết quả tìm kiếm
         results_preview = []
@@ -445,10 +478,21 @@ class LegalRAGAgent:
                 return state
             
             # Search with Vietnamese legal focus
-            results = self.web_search.search_vietnamese_law(
-                query=query,
-                max_results=self.top_k
-            )
+            intent = state.get("intent", "INTERNAL")
+            
+            if intent == "EXTERNAL":
+                # Use raw query for external/practical info
+                results = self.web_search.search(
+                    query=query,
+                    max_results=self.top_k,
+                    language="vi"
+                )
+            else:
+                # Use optimized legal query (prefixed)
+                results = self.web_search.search_vietnamese_law(
+                    query=query,
+                    max_results=self.top_k
+                )
             
             # Add to web_results (avoid duplicates)
             if not existing_web_results:
@@ -473,6 +517,10 @@ class LegalRAGAgent:
             
             if not existing_web_results:
                 print(f"✓ Tìm thấy {len(results)} kết quả web. Tổng: {len(merged_web_results)}")
+                # DEBUG: Print web results content
+                print("\nDEBUG: Web Results Content:")
+                for i, r in enumerate(merged_web_results):
+                    print(f"[{i+1}] {r.get('title', 'N/A')}: {r.get('content', '')[:200]}...")
             
         except Exception as e:
             print(f"Lỗi khi tìm kiếm web: {e}")
@@ -591,16 +639,17 @@ class LegalRAGAgent:
         iteration = state.get("iteration", 0)
         max_iterations = state.get("max_iterations", self.max_iterations)
         search_results = state.get("search_results", [])
+        web_results = state.get("web_results", [])
         
         # Nếu đã đạt max iterations, tạo câu trả lời
         if iteration >= max_iterations:
-            if search_results:
+            if search_results or web_results:
                 return "answer"
             else:
                 return "end"
         
         # Nếu không có kết quả nào, kết thúc
-        if not search_results:
+        if not search_results and not web_results:
             return "end"
         
         # Luôn quay lại decide_action để LLM quyết định có cần tìm kiếm thêm

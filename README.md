@@ -78,6 +78,7 @@ curl -X POST http://localhost:8080/api/legal-query \
 
 ### Services Running
 
+- **Frontend UI**: http://localhost:5173
 - **Backend API**: http://localhost:8080
 - **AI Engine**: http://localhost:8000
 - **Qdrant**: http://localhost:6333
@@ -126,7 +127,7 @@ deploy:
 
 ```mermaid
 graph TB
-    Client[Client/User] -->|HTTP POST| GoAPI[Go Backend API<br/>Port 8080]
+    Frontend[React Frontend<br/>Port 5173] -->|HTTP POST| GoAPI[Go Backend API<br/>Port 8080]
     GoAPI -->|HTTP POST| PyEngine[Python AI Engine<br/>Port 8000]
     
     PyEngine --> Agent[Agentic RAG<br/>LangGraph]
@@ -141,9 +142,9 @@ graph TB
     
     Agent -->|Response| PyEngine
     PyEngine -->|JSON| GoAPI
-    GoAPI -->|JSON| Client
+    GoAPI -->|JSON| Frontend
     
-    style Client fill:#e1f5ff
+    style Frontend fill:#e1f5fe
     style GoAPI fill:#fff3e0
     style PyEngine fill:#f3e5f5
     style Agent fill:#e8f5e9
@@ -153,6 +154,15 @@ graph TB
 ```
 
 ### Các Thành Phần
+
+#### 0. **React Frontend** (Port 5173)
+- **Vai trò**: Giao diện người dùng tương tác
+- **Công nghệ**: React + TypeScript + Vite + TailwindCSS
+- **Chức năng**:
+  - Gửi câu hỏi và hiển thị câu trả lời
+  - Trực quan hóa quá trình suy luận (Reasoning)
+  - Hiển thị nguồn trích dẫn pháp lý và kết quả Web
+  - Tùy chỉnh cấu hình AI (Max iterations, TopK)
 
 #### 1. **Go Backend API** (Port 8080)
 - **Vai trò**: Gateway giữa client và AI engine
@@ -206,6 +216,15 @@ graph TB
 ---
 
 ## 🛠️ Công Nghệ Sử Dụng
+
+### Frontend
+- **React 18+**: UI Library
+- **TypeScript**: Static typing
+- **Vite**: Build tool & dev server
+- **TailwindCSS v4**: Styling
+- **Framer Motion**: Animations
+- **Lucide React**: Icons
+- **Axios**: HTTP Client
 
 ### Backend
 - **Go 1.21+**: Backend API gateway
@@ -288,7 +307,7 @@ stateDiagram-v2
 
 6. **Return Response**
    ```
-   Agentic RAG → Python API → Go API → Client
+   Agentic RAG → Python API → Go API → React Frontend
    ```
 
 ### Ví Dụ Cụ Thể
@@ -389,6 +408,14 @@ stateDiagram-v2
    cp .env.example .env
    ```
 
+4. **Setup React Frontend**
+   ```bash
+   cd ../frontend
+   
+   # Install dependencies
+   npm install
+   ```
+
 ---
 
 ## 🚀 Sử Dụng
@@ -423,6 +450,13 @@ python api_server.py
 cd backend-api
 go run main.go
 # Server running on http://localhost:8080
+```
+
+**Terminal 6 - React Frontend**:
+```bash
+cd frontend
+npm run dev
+# App running on http://localhost:5173
 ```
 
 ### Making Queries
@@ -487,6 +521,14 @@ Legal-RAG/
 ├── README.md                    # Documentation này
 ├── docker-compose.yml           # Docker setup
 ├── test_http_integration.sh     # Integration test script
+│
+├── frontend/                    # React Frontend (Vite + TS)
+│   ├── src/
+│   │   ├── api/                # API Client services
+│   │   ├── components/         # UI Components
+│   │   ├── hooks/              # Custom hooks (Chat, etc.)
+│   │   └── App.tsx             # Main Application
+│   └── package.json
 │
 ├── searxng/                     # SearXNG configuration
 │   └── settings.yml            # Search engine settings
@@ -701,6 +743,7 @@ curl -X POST http://localhost:8080/api/legal-query \
 
 ### ✅ Implemented
 
+- ✅ Giao diện React Frontend hiện đại
 - ✅ Agentic RAG với LangGraph
 - ✅ Vector search với Qdrant
 - ✅ Vietnamese LLM (Ollama qwen2.5:7b)
@@ -713,7 +756,7 @@ curl -X POST http://localhost:8080/api/legal-query \
 
 ### 🔄 Roadmap
 
-- [ ] Frontend UI
+- [x] Frontend UI
 - [ ] User authentication
 - [ ] Search history
 - [ ] Document upload

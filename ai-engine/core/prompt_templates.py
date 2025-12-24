@@ -4,6 +4,7 @@ Cho phép customize prompts dễ dàng mà không cần sửa code.
 """
 
 from typing import Dict, Optional, Any
+from datetime import datetime
 
 
 class PromptTemplates:
@@ -22,9 +23,10 @@ Kết quả tìm kiếm hiện tại:
 {results_preview}
 
 PHÂN TÍCH QUAN TRỌNG:
-1. Câu hỏi có hỏi về SỐ LIỆU CỤ THỂ (số tiền, tỷ lệ %, mức lương, ngày tháng) không?
-2. Kết quả nội bộ có cung cấp CON SỐ CỤ THỂ đó không?
-3. Nếu câu hỏi hỏi số cụ thể nhưng kết quả chỉ có khung pháp lý chung → CẦN WEB_SEARCH
+1. Câu hỏi có hỏi về SỐ LIỆU CỤ THỂ (tiền, %, ngày...), ĐỊA CHỈ, hay THỦ TỤC hành chính thực tế không?
+2. Kết quả nội bộ có cung cấp thông tin CHI TIẾT đó không?
+3. Nếu kết quả nội bộ chỉ có quy định chung (khung luật) nhưng người dùng hỏi thông tin thực tế (con số, địa chỉ, quy trình nộp) → BẮT BUỘC chọn "web_search".
+4. Nếu database nội bộ trả về kết quả không liên quan → chọn "refine" hoặc "web_search".
 
 Hãy trả lời bằng MỘT TRONG các lựa chọn sau (chỉ trả lời một từ):
 - "answer" - Nếu đã có đủ thông tin CỤ THỂ để trả lời câu hỏi
@@ -34,10 +36,16 @@ Hãy trả lời bằng MỘT TRONG các lựa chọn sau (chỉ trả lời m�
 Chỉ trả lời MỘT từ: answer, refine, search{web_search_suffix}."""
 
     DEFAULT_WEB_SEARCH_GUIDANCE = """
-- "web_search" - Nếu câu hỏi về SỐ LIỆU CỤ THỂ (số tiền, tỷ lệ %, ngày tháng) mà kết quả nội bộ KHÔNG có con số cụ thể
-  VÍ DỤ: "mức lương tối thiểu vùng 1 là bao nhiêu" → cần web_search vì Bộ luật chỉ nói "theo vùng" nhưng không có số tiền
-  VÍ DỤ: "quy định MỚI NHẤT 2024" → cần web_search để tìm nghị định mới
-  VÍ DỤ: "tỷ lệ đóng BHXH hiện nay" → cần web_search vì cần số % cụ thể"""
+- "web_search" CHỈ được chọn khi:
+  1. Câu hỏi về SỐ LIỆU CỤ THỂ biến động (lương tối thiểu, lãi suất, tỷ lệ BHXH {current_year}).
+  2. Câu hỏi về ĐỊA ĐIỂM thực tế (địa chỉ cơ quan, văn phòng, nơi nộp hồ sơ, số điện thoại).
+  3. Câu hỏi về THỦ TỤC hành chính thực tế (mẫu đơn, quy trình online/offline).
+  4. Câu hỏi về TIN TỨC/SỰ KIỆN mới nhất xảy ra trong năm {current_year} hoặc gần đây.
+  5. Nội dung trong database nội bộ (nếu có) đã QUÁ CŨ hoặc KHÔNG ĐỦ chi tiết thực tế.
+  
+  LƯU Ý QUAN TRỌNG:
+  - Nếu kết quả nội bộ chỉ có "quy định chung" mà không có "con số/địa chỉ cụ thể", BẮT BUỘC phải web_search.
+  - Với câu hỏi địa điểm (ví dụ: "ở Quận 1"), cần tìm chính xác địa chỉ tại khu vực đó. Nếu không có, tìm địa điểm GẦN NHẤT."""
 
     DEFAULT_REFINE_PROMPT = """Bạn là chuyên gia pháp lý. Hãy trích xuất KHÁI NIỆM PHÁP LÝ chính từ câu hỏi để tìm kiếm trong Bộ luật Lao động.
 
@@ -57,17 +65,23 @@ Ví dụ:
 
 Chỉ trả lời query mới (2-6 từ), KHÔNG giải thích."""
 
-    DEFAULT_SYSTEM_PROMPT = """Bạn là trợ lý pháp lý chuyên nghiệp, chuyên tư vấn Bộ luật Lao động Việt Nam.
+    DEFAULT_SYSTEM_PROMPT = """Bạn là trợ lý pháp lý chuyên nghiệp, chuyên tư vấn pháp luật Việt Nam.
+Hôm nay là: {current_date} (Năm {current_year}).
 
 QUY TẮC BẮT BUỘC (NGHIÊM NGẶT):
-1. CHỈ sử dụng thông tin từ các điều luật được cung cấp bên dưới
-2. KHÔNG được tự bịa thêm quy định, tỷ lệ phần trăm, hoặc số liệu không có trong điều luật
-3. KHÔNG được nói "theo quy định chung" hoặc "thông thường" nếu không có trong điều luật
-4. Nếu thông tin KHÔNG ĐỦ để trả lời đầy đủ câu hỏi, hãy nói rõ: "Các điều luật tìm được chưa đủ thông tin về [vấn đề cụ thể]"
-5. LUÔN trích dẫn chính xác số điều và khoản khi đưa ra thông tin
-6. Nếu câu hỏi hỏi về con số cụ thể (%, số tiền, số ngày) mà điều luật không nêu rõ, hãy nói: "Điều luật không quy định cụ thể về [vấn đề]"
+1. ƯU TIÊN SỐ 1: Sử dụng thông tin từ các điều luật nội bộ được cung cấp.
+2. ƯU TIÊN SỐ 2: Sử dụng thông tin từ kết quả Web Search (nếu có) để bổ sung các số liệu thực tế, mức lương, địa chỉ, hoặc quy định mới nhất chưa có trong dữ liệu nội bộ.
+3. KHI TRẢ LỜI VỀ ĐỊA ĐIỂM/THỦ TỤC:
+   - Phải cung cấp ĐỊA CHỈ CỤ THỂ, CHÍNH XÁC (số nhà, đường, phường, quận) nếu tìm thấy.
+   - Nếu không tìm thấy địa chỉ chính xác tại quận/huyện người dùng hỏi, hãy gợi ý địa chỉ GẦN NHẤT.
+   - Đừng trả lời chung chung kiểu "nộp tại trung tâm dịch vụ việc làm" mà không đưa ra địa chỉ ví dụ.
+4. TRÍCH DẪN RÕ RÀNG:
+   - Với thông tin từ luật: "Theo Điều X, Bộ luật Lao động..."
+   - Với thông tin từ Web: "Theo thông tin từ [Nguồn Web]..."
+   - Với thông tin tổng hợp: Kết hợp cả hai để có câu trả lời đầy đủ nhất.
+5. Nếu thông tin hoàn toàn KHÔNG CÓ trong cả luật lẫn web, hãy trung thực nhận lỗi.
 
-Trả lời bằng tiếng Việt, rõ ràng, chính xác, trung thực."""
+Trả lời bằng tiếng Việt, rõ ràng, chính xác, trung thực, LUÔN CẬP NHẬT theo thời điểm hiện tại ({current_year})."""
 
     DEFAULT_USER_PROMPT = """Dựa CHÍNH XÁC và HOÀN TOÀN vào các điều luật sau, hãy trả lời câu hỏi:
 
@@ -82,18 +96,22 @@ Hãy trả lời theo cấu trúc:
 
 Nhớ: CHỈ dùng thông tin từ các điều luật trên, KHÔNG bịa thêm."""
 
+    DEFAULT_ROUTER_PROMPT = """Bạn là một bộ phân loại câu hỏi pháp lý thông minh. Nhiệm vụ của bạn là xác định loại thông tin mà người dùng đang tìm kiếm.
+
+Câu hỏi: {question}
+
+Hãy phân loại vào một trong hai nhóm sau:
+1. "INTERNAL": Nếu câu hỏi về LÝ THUYẾT, ĐỊNH NGHĨA, NGUYÊN TẮC, hoặc CÁC QUY ĐỊNH CHUNG trong Bộ luật (Ví dụ: "thử việc tối đa bao lâu", "nguyên tắc sa thải", "hợp đồng lao động là gì").
+2. "EXTERNAL": Nếu câu hỏi cần SỐ LIỆU CỤ THỂ, BIẾN ĐỘNG THEO THỜI GIAN, TIN TỨC, ĐỊA CHỈ, THỦ TỤC THỰC TẾ hoặc LIÊN HỆ (Ví dụ: "lương tối thiểu vùng 1 năm nay", "địa chỉ bảo hiểm xã hội quận 3", "mẫu đơn xin nghỉ việc", "lãi suất chậm đóng BHXH").
+
+Chỉ trả lời đúng một từ: INTERNAL hoặc EXTERNAL."""
+
     def __init__(self, custom_templates: Optional[Dict[str, str]] = None):
         """
         Khởi tạo PromptTemplates.
         
         Args:
             custom_templates: Dict chứa custom templates để override defaults
-                Các key có thể có:
-                - "decision_prompt": Template cho quyết định hành động
-                - "web_search_guidance": Hướng dẫn về web search
-                - "refine_prompt": Template cho refine query
-                - "system_prompt": System prompt cho LLM
-                - "user_prompt": User prompt cho generate answer
         """
         self.templates = {
             "decision_prompt": self.DEFAULT_DECISION_PROMPT,
@@ -101,11 +119,24 @@ Nhớ: CHỈ dùng thông tin từ các điều luật trên, KHÔNG bịa thêm
             "refine_prompt": self.DEFAULT_REFINE_PROMPT,
             "system_prompt": self.DEFAULT_SYSTEM_PROMPT,
             "user_prompt": self.DEFAULT_USER_PROMPT,
+            "router_prompt": self.DEFAULT_ROUTER_PROMPT,
         }
         
         # Override với custom templates nếu có
         if custom_templates:
             self.templates.update(custom_templates)
+            
+    def get_router_prompt(self, question: str) -> str:
+        """
+        Tạo prompt cho router phân loại câu hỏi.
+        
+        Args:
+            question: Câu hỏi của người dùng
+            
+        Returns:
+            Prompt đã được format
+        """
+        return self.templates["router_prompt"].format(question=question)
     
     def get_decision_prompt(
         self,
@@ -135,8 +166,17 @@ Nhớ: CHỈ dùng thông tin từ các điều luật trên, KHÔNG bịa thêm
         web_search_option = ""
         web_search_suffix = ""
         
+        if not current_year:
+            from datetime import datetime
+            current_year = str(datetime.now().year)
+
+        print(f"[Prompt] Sử dụng năm: {current_year}")
+        
+        web_search_option = ""
+        web_search_suffix = ""
+        
         if enable_web_search:
-            web_search_option = self.templates["web_search_guidance"]
+            web_search_option = self.templates["web_search_guidance"].format(current_year=current_year)
             web_search_suffix = ", hoặc web_search"
         
         return self.templates["decision_prompt"].format(
@@ -176,14 +216,28 @@ Nhớ: CHỈ dùng thông tin từ các điều luật trên, KHÔNG bịa thêm
             articles_found=articles_found
         )
     
-    def get_system_prompt(self) -> str:
+    def get_system_prompt(self, current_date: str = "", current_year: str = "") -> str:
         """
-        Lấy system prompt cho LLM.
+        Tạo system prompt.
         
+        Args:
+            current_date: Ngày hiện tại (DD/MM/YYYY)
+            current_year: Năm hiện tại (YYYY)
+            
         Returns:
             System prompt
         """
-        return self.templates["system_prompt"]
+        # Fallback values if empty
+        if not current_date:
+            from datetime import datetime
+            now = datetime.now()
+            current_date = now.strftime("%d/%m/%Y")
+            current_year = str(now.year)
+            
+        return self.templates["system_prompt"].format(
+            current_date=current_date,
+            current_year=current_year
+        )
     
     def get_user_prompt(self, context: str, question: str) -> str:
         """
